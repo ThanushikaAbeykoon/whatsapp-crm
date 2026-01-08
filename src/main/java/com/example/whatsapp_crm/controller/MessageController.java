@@ -48,6 +48,47 @@ public class MessageController {
     @Value("${whatsapp.version}") private String API_VERSION;
     @Value("${whatsapp.webhook-verify-token:your_verify_token}") private String WEBHOOK_VERIFY_TOKEN;
 
+    // Root endpoint - Health check and API info
+    @GetMapping("/")
+    public ResponseEntity<Map<String, Object>> root() {
+        return ResponseEntity.ok(Map.of(
+            "status", "running",
+            "message", "WhatsApp CRM API is running",
+            "version", "1.0.0",
+            "endpoints", Map.of(
+                "messages", "/api/messages",
+                "contacts", "/api/contacts",
+                "send", "/api/send",
+                "webhook", "/api/webhook",
+                "health", "/api/health"
+            )
+        ));
+    }
+
+    // Health check endpoint
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, Object>> health() {
+        try {
+            // Test database connection
+            long messageCount = messageRepository.count();
+            long contactCount = contactRepository.count();
+            
+            return ResponseEntity.ok(Map.of(
+                "status", "healthy",
+                "database", "connected",
+                "messageCount", messageCount,
+                "contactCount", contactCount,
+                "timestamp", System.currentTimeMillis()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "status", "unhealthy",
+                "error", e.getMessage(),
+                "timestamp", System.currentTimeMillis()
+            ));
+        }
+    }
+
     // Enhanced GET endpoints with pagination and filtering
     @GetMapping("/messages")
     public ResponseEntity<?> getAllMessages(
