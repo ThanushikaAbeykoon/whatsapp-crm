@@ -155,109 +155,212 @@ public class MessageController {
     // Main webhook for incoming messages (POST)
     @PostMapping("/webhook")
     public ResponseEntity<String> handleWebhook(@RequestBody Map<String, Object> payload) {
-        System.out.println("Webhook received: " + payload);
+        try {
+            System.out.println("=== Webhook Received ===");
+            System.out.println("Timestamp: " + new java.util.Date());
 
-        List<Map<String, Object>> entries = (List<Map<String, Object>>) payload.get("entry");
-        if (entries == null || entries.isEmpty()) {
-            System.out.println("No entries found in webhook payload");
-            return ResponseEntity.ok("OK");
-        }
-
-        for (Map<String, Object> entry : entries) {
-            List<Map<String, Object>> changes = (List<Map<String, Object>>) entry.get("changes");
-            if (changes == null || changes.isEmpty()) {
-                continue;
+            List<Map<String, Object>> entries = (List<Map<String, Object>>) payload.get("entry");
+            if (entries == null || entries.isEmpty()) {
+                System.out.println("No entries found in webhook payload");
+                return ResponseEntity.ok("OK");
             }
 
-            for (Map<String, Object> change : changes) {
-                String field = (String) change.get("field");
-                if (!"messages".equals(field)) {
-                    System.out.println("Ignoring non-messages field: " + field);
-                    continue;
-                }
-
+            int messagesProcessed = 0;
+            for (Map<String, Object> entry : entries) {
                 @SuppressWarnings("unchecked")
-                Map<String, Object> value = (Map<String, Object>) change.get("value");
-                if (value == null) {
+                List<Map<String, Object>> changes = (List<Map<String, Object>>) entry.get("changes");
+                if (changes == null || changes.isEmpty()) {
                     continue;
                 }
 
-                // Extract contacts
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> contacts = (List<Map<String, Object>>) value.get("contacts");
-                if (contacts == null || contacts.isEmpty()) {
-                    System.out.println("No contacts in payload");
-                    continue;
-                }
+                for (Map<String, Object> change : changes) {
+                    String field = (String) change.get("field");
+                    if (!"messages".equals(field)) {
+                        System.out.println("Ignoring non-messages field: " + field);
+                        continue;
+                    }
 
-                Map<String, Object> contact = contacts.get(0);
-                final String senderPhone = (String) contact.get("wa_id");
-                if (senderPhone == null) {
-                    System.out.println("Missing wa_id in contact");
-                    continue;
-                }
-
-                final String senderName;
-                @SuppressWarnings("unchecked")
-                Map<String, Object> profile = (Map<String, Object>) contact.get("profile");
-                String profileName = (String) (profile != null ? profile.get("name") : null);
-                senderName = profileName != null ? profileName : "Unknown";
-
-                // Extract messages
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> messages = (List<Map<String, Object>>) value.get("messages");
-
-                if (messages == null || messages.isEmpty()) {
-                    // This could be a status update (sent/delivered/read)
-                    System.out.println("Status update received (no message content) from: " + senderPhone);
-                    continue;
-                }
-
-                Map<String, Object> message = messages.get(0);
-                String type = (String) message.get("type");
-
-                if ("text".equals(type)) {
                     @SuppressWarnings("unchecked")
-                    Map<String, Object> textObj = (Map<String, Object>) message.get("text");
-                    String body = (String) textObj.get("body");
+                    Map<String, Object> value = (Map<String, Object>) change.get("value");
+                    if (value == null) {
+                        continue;
+                    }
 
-                    String messageId = (String) message.get("id");
-                    String timestampStr = (String) message.get("timestamp");
-                    long timestamp = Long.parseLong(timestampStr);
+                    // Extract contacts
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> contacts = (List<Map<String, Object>>) value.get("contacts");
+                    if (contacts == null || contacts.isEmpty()) {
+                        System.out.println("No contacts in payload - skipping");
+                        continue;
+                    }
 
-                    // Find or create contact
-                    Optional<Contact> existingContact = Optional.ofNullable(contactRepository.findByPhone(senderPhone));
-                    Contact dbContact = existingContact.orElseGet(() -> {
-                        Contact newContact = new Contact();
-                        newContact.setPhone(senderPhone);
-                        newContact.setName(senderName);
-                        newContact.setCreatedAt(new Timestamp(System.currentTimeMillis()));
-                        return contactRepository.save(newContact);
-                    });
+                    Map<String, Object> contact = contacts.get(0);
+                    final String senderPhone = (String) contact.get("wa_id");
+                    if (senderPhone == null) {
+                        System.out.println("Missing wa_id in contact - skipping");
+                        continue;
+                    }
 
-                    // Save message
-                    Message msg = new Message();
-                    msg.setContactPhone(senderPhone);
-                    msg.setBody(body);
-                    msg.setFromMe(false);
-                    msg.setTimestamp(new Timestamp(timestamp));
-                    msg.setCreatedAt(new Timestamp(System.currentTimeMillis()));
-                    msg.setWhatsappMessageId(messageId);
+                    final String senderName;
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> profile = (Map<String, Object>) contact.get("profile");
+                    String profileName = (profile != null ? (String) profile.get("name") : null);
+                    senderName = profileName != null && !profileName.isEmpty() ? profileName : "Unknown";
 
-                    messageRepository.save(msg);
+                    // Extract messages
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> messages = (List<Map<String, Object>>) value.get("messages");
 
-                    System.out.println("SUCCESS - Saved incoming message | From: " + senderPhone +
-                            " | Name: " + senderName +
-                            " | Text: " + body +
-                            " | Msg ID: " + messageId);
-                } else {
-                    // Future: handle image, document, button_reply, etc.
-                    System.out.println("Received non-text message type: " + type + " from " + senderPhone);
+                    if (messages == null || messages.isEmpty()) {
+                        // This could be a status update (sent/delivered/read)
+                        System.out.println("Status update received (no message content) from: " + senderPhone);
+                        continue;
+                    }
+
+                    // Process each message
+                    for (Map<String, Object> message : messages) {
+                        String messageId = (String) message.get("id");
+                        if (messageId == null) {
+                            System.out.println("Message ID is null - skipping");
+                            continue;
+                        }
+
+                        // Check for duplicate message
+                        Optional<Message> existingMessage = messageRepository.findAll()
+                            .stream()
+                            .filter(m -> messageId.equals(m.getWhatsappMessageId()))
+                            .findFirst();
+
+                        if (existingMessage.isPresent()) {
+                            System.out.println("Duplicate message detected - ID: " + messageId + " - skipping");
+                            continue;
+                        }
+
+                        String type = (String) message.get("type");
+                        String body = extractMessageBody(message, type);
+
+                        String timestampStr = (String) message.get("timestamp");
+                        long timestamp = timestampStr != null ? Long.parseLong(timestampStr) * 1000 : System.currentTimeMillis();
+
+                        // Find or create contact
+                        Contact dbContact = contactRepository.findByPhone(senderPhone);
+                        if (dbContact == null) {
+                            dbContact = new Contact();
+                            dbContact.setPhone(senderPhone);
+                            dbContact.setName(senderName);
+                            dbContact.setCreatedAt(new Timestamp(System.currentTimeMillis()));
+                            dbContact = contactRepository.save(dbContact);
+                            System.out.println("✓ New contact created: " + senderName + " (" + senderPhone + ")");
+                        } else if (!senderName.equals("Unknown") && !senderName.equals(dbContact.getName())) {
+                            // Update contact name if it has changed
+                            dbContact.setName(senderName);
+                            contactRepository.save(dbContact);
+                            System.out.println("✓ Contact name updated: " + senderName);
+                        }
+
+                        // Save message to database
+                        Message msg = new Message();
+                        msg.setContactPhone(senderPhone);
+                        msg.setBody(body);
+                        msg.setFromMe(false); // Incoming message
+                        msg.setTimestamp(new Timestamp(timestamp));
+                        msg.setCreatedAt(new Timestamp(System.currentTimeMillis()));
+                        msg.setWhatsappMessageId(messageId);
+
+                        messageRepository.save(msg);
+                        messagesProcessed++;
+
+                        System.out.println("✓ Message saved to database");
+                        System.out.println("  - ID: " + msg.getId());
+                        System.out.println("  - From: " + senderPhone + " (" + senderName + ")");
+                        System.out.println("  - Type: " + type);
+                        System.out.println("  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
+                        System.out.println("  - WhatsApp Msg ID: " + messageId);
+                    }
                 }
             }
+
+            System.out.println("=== Webhook Processing Complete ===");
+            System.out.println("Total messages processed: " + messagesProcessed + "\n");
+            return ResponseEntity.ok("OK");
+
+        } catch (Exception e) {
+            System.err.println("ERROR processing webhook: " + e.getMessage());
+            e.printStackTrace();
+            // Still return 200 to prevent WhatsApp from retrying
+            return ResponseEntity.ok("Error processed");
+        }
+    }
+
+    // Helper method to extract message body based on type
+    private String extractMessageBody(Map<String, Object> message, String type) {
+        if (type == null) {
+            return "[Unknown message type]";
         }
 
-        return ResponseEntity.ok("OK");
+        switch (type) {
+            case "text":
+                @SuppressWarnings("unchecked")
+                Map<String, Object> textObj = (Map<String, Object>) message.get("text");
+                return textObj != null ? (String) textObj.get("body") : "[Empty text]";
+
+            case "image":
+                @SuppressWarnings("unchecked")
+                Map<String, Object> imageObj = (Map<String, Object>) message.get("image");
+                if (imageObj != null) {
+                    String caption = (String) imageObj.get("caption");
+                    return caption != null ? "[Image] " + caption : "[Image]";
+                }
+                return "[Image]";
+
+            case "document":
+                @SuppressWarnings("unchecked")
+                Map<String, Object> docObj = (Map<String, Object>) message.get("document");
+                if (docObj != null) {
+                    String filename = (String) docObj.get("filename");
+                    String caption = (String) docObj.get("caption");
+                    String display = filename != null ? filename : "Document";
+                    return caption != null ? "[Document: " + display + "] " + caption : "[Document: " + display + "]";
+                }
+                return "[Document]";
+
+            case "audio":
+                return "[Audio message]";
+
+            case "video":
+                @SuppressWarnings("unchecked")
+                Map<String, Object> videoObj = (Map<String, Object>) message.get("video");
+                if (videoObj != null) {
+                    String caption = (String) videoObj.get("caption");
+                    return caption != null ? "[Video] " + caption : "[Video]";
+                }
+                return "[Video]";
+
+            case "location":
+                @SuppressWarnings("unchecked")
+                Map<String, Object> locationObj = (Map<String, Object>) message.get("location");
+                if (locationObj != null) {
+                    Double latitude = (Double) locationObj.get("latitude");
+                    Double longitude = (Double) locationObj.get("longitude");
+                    return String.format("[Location] Lat: %s, Long: %s", latitude, longitude);
+                }
+                return "[Location]";
+
+            case "button":
+                @SuppressWarnings("unchecked")
+                Map<String, Object> buttonObj = (Map<String, Object>) message.get("button");
+                if (buttonObj != null) {
+                    String text = (String) buttonObj.get("text");
+                    return text != null ? "[Button Response] " + text : "[Button Response]";
+                }
+                return "[Button Response]";
+
+            case "interactive":
+                return "[Interactive message]";
+
+            default:
+                return "[Message type: " + type + "]";
+        }
     }
 
     // Send message endpoint
