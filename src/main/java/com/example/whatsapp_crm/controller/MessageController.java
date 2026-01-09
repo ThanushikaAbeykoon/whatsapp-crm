@@ -182,10 +182,15 @@ public class MessageController {
     @PostMapping("/webhook")
     public ResponseEntity<String> receiveWebhook(@RequestBody WhatsAppWebhookRequest request) {
         try {
+            System.out.println("=== Webhook Received ===");
+            System.out.println("Request received at: " + new java.util.Date());
+            
             if (request.getEntry() == null || request.getEntry().isEmpty()) {
+                System.out.println("No entries in webhook request");
                 return ResponseEntity.ok("OK");
             }
 
+            int messageCount = 0;
             for (WhatsAppWebhookRequest.Entry entry : request.getEntry()) {
                 if (entry.getChanges() == null) continue;
 
@@ -196,6 +201,7 @@ public class MessageController {
                     
                     // Process incoming messages
                     if (value.getMessages() != null) {
+                        System.out.println("Processing " + value.getMessages().size() + " message(s)");
                         for (WhatsAppWebhookRequest.Entry.Change.Value.Message message : value.getMessages()) {
                             // Find corresponding contact info
                             WhatsAppWebhookRequest.Entry.Change.Value.Contact contact = null;
@@ -203,16 +209,24 @@ public class MessageController {
                                 contact = value.getContacts().get(0);
                             }
                             
+                            System.out.println("Processing message from: " + message.getFrom());
+                            System.out.println("Message ID: " + message.getId());
+                            
                             // Process and save the message
                             messageService.processIncomingMessage(message, contact);
+                            messageCount++;
                         }
+                    } else {
+                        System.out.println("No messages in webhook payload (might be status update)");
                     }
                 }
             }
 
+            System.out.println("Successfully processed " + messageCount + " message(s)");
+            System.out.println("=== Webhook Processing Complete ===\n");
             return ResponseEntity.ok("OK");
         } catch (Exception e) {
-            System.err.println("Error processing webhook: " + e.getMessage());
+            System.err.println("ERROR processing webhook: " + e.getMessage());
             e.printStackTrace();
             // Still return 200 to prevent WhatsApp from retrying
             return ResponseEntity.ok("Error processed");

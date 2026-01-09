@@ -84,9 +84,10 @@ public class MessageService {
             message.setCreatedAt(new Timestamp(System.currentTimeMillis()));
             
             messageRepository.save(message);
+            System.out.println("✓ Message saved to database - ID: " + message.getId() + ", From: " + phoneNumber);
         } catch (Exception e) {
             // Log error but don't throw to avoid webhook retries
-            System.err.println("Error processing incoming message: " + e.getMessage());
+            System.err.println("ERROR processing incoming message: " + e.getMessage());
             e.printStackTrace();
         }
     }
