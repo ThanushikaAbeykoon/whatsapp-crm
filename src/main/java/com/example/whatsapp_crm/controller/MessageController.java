@@ -225,11 +225,8 @@ public class MessageController {
                             continue;
                         }
 
-                        // Check for duplicate message
-                        Optional<Message> existingMessage = messageRepository.findAll()
-                            .stream()
-                            .filter(m -> messageId.equals(m.getWhatsappMessageId()))
-                            .findFirst();
+                        // Check for duplicate message (optimized - direct database query)
+                        Optional<Message> existingMessage = messageRepository.findByWhatsappMessageId(messageId);
 
                         if (existingMessage.isPresent()) {
                             System.out.println("Duplicate message detected - ID: " + messageId + " - skipping");
