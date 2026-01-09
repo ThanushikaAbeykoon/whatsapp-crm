@@ -35,7 +35,7 @@ import com.example.whatsapp_crm.service.MessageService;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {"https://whatsapp-crm-frontend-production.up.railway.app", "http://localhost:3000"})
 public class MessageController {
 
     @Autowired private MessageRepository messageRepository;
