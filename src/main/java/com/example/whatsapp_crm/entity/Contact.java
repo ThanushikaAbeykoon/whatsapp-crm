@@ -24,9 +24,4 @@ public class Contact {
 
     @Column(name = "created_at")
     private java.sql.Timestamp createdAt;
-
-    public Contact orElseGet(Object object) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'orElseGet'");
-    }
 }
