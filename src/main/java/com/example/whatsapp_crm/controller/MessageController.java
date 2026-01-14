@@ -396,20 +396,45 @@ public class MessageController {
     @PostMapping("/send")
     public ResponseEntity<String> sendMessage(@RequestBody SendMessageRequest request) {
         try {
-            // Save to DB first (outgoing)
+            String cleanPhone = request.phone().replaceAll("[^0-9]", "");
+            
+            System.out.println("=== Sending Message ===");
+            System.out.println("To: " + cleanPhone);
+            System.out.println("Message: " + request.message());
+
+            // Find or create contact in database
+            Contact dbContact = contactRepository.findByPhone(cleanPhone);
+            if (dbContact == null) {
+                // Create new contact if doesn't exist
+                dbContact = new Contact();
+                dbContact.setPhone(cleanPhone);
+                dbContact.setName(cleanPhone); // Default name is phone number, can be updated later
+                dbContact.setCreatedAt(new Timestamp(System.currentTimeMillis()));
+                dbContact = contactRepository.save(dbContact);
+                System.out.println("✓ New contact created: " + cleanPhone);
+            } else {
+                System.out.println("✓ Contact found: " + dbContact.getName() + " (" + cleanPhone + ")");
+            }
+
+            // Save message to database first (outgoing message)
             Message msg = new Message();
-            msg.setContactPhone(request.phone());
+            msg.setContactPhone(cleanPhone);
             msg.setBody(request.message());
-            msg.setFromMe(true);
+            msg.setFromMe(true); // Outgoing message
             long now = System.currentTimeMillis();
             msg.setTimestamp(new Timestamp(now));
             msg.setCreatedAt(new Timestamp(now));
+            // WhatsApp message ID will be null for outgoing messages until we get response
+            msg.setWhatsappMessageId(null);
+            
             messageRepository.save(msg);
+            System.out.println("✓ Message saved to database");
+            System.out.println("  - Database ID: " + msg.getId());
+            System.out.println("  - To: " + cleanPhone);
+            System.out.println("  - From Me: true (outgoing)");
 
-            // Send via WhatsApp API
+            // Send via WhatsApp Cloud API
             String url = String.format("https://graph.facebook.com/%s/%s/messages", API_VERSION, PHONE_NUMBER_ID);
-
-            String cleanPhone = request.phone().replaceAll("[^0-9]", "");
 
             String jsonBody = """
                     {
@@ -430,12 +455,35 @@ public class MessageController {
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
+                // Try to extract WhatsApp message ID from response and update the message
+                try {
+                    String responseBody = response.getBody();
+                    if (responseBody != null && responseBody.contains("\"id\"")) {
+                        // Extract message ID from response (basic extraction)
+                        // Format: {"messages":[{"id":"wamid.xxx"}]}
+                        int idStart = responseBody.indexOf("\"id\":\"") + 6;
+                        int idEnd = responseBody.indexOf("\"", idStart);
+                        if (idStart > 5 && idEnd > idStart) {
+                            String whatsappMsgId = responseBody.substring(idStart, idEnd);
+                            msg.setWhatsappMessageId(whatsappMsgId);
+                            messageRepository.save(msg);
+                            System.out.println("✓ WhatsApp Message ID updated: " + whatsappMsgId);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("⚠ Could not extract WhatsApp message ID from response");
+                }
+                
+                System.out.println("=== Message Sent Successfully ===\n");
                 return ResponseEntity.ok("Message sent successfully to WhatsApp");
             } else {
+                System.err.println("ERROR: WhatsApp API returned: " + response.getStatusCode());
+                System.err.println("Response: " + response.getBody());
                 return ResponseEntity.status(response.getStatusCode())
                         .body("WhatsApp API error: " + response.getBody());
             }
         } catch (Exception e) {
+            System.err.println("ERROR sending message: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Failed to send message: " + e.getMessage());
