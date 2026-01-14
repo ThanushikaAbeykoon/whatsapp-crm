@@ -218,6 +218,8 @@ public class MessageController {
                     }
 
                     // Process each message
+                    // NOTE: All messages are saved, even if they are duplicates from the same contact
+                    // This ensures complete message history is preserved
                     for (Map<String, Object> message : messages) {
                         String messageId = (String) message.get("id");
                         if (messageId == null) {
@@ -248,6 +250,8 @@ public class MessageController {
                         }
 
                         // Save message to database
+                        // IMPORTANT: All messages are saved, including duplicates from same contact
+                        // Each message gets a unique database ID, even if WhatsApp message ID is the same
                         Message msg = new Message();
                         msg.setContactPhone(senderPhone);
                         msg.setBody(body);
@@ -259,12 +263,13 @@ public class MessageController {
                         messageRepository.save(msg);
                         messagesProcessed++;
 
-                        System.out.println("✓ Message saved to database");
-                        System.out.println("  - ID: " + msg.getId());
+                        System.out.println("✓ Message saved to database (all messages saved, including duplicates)");
+                        System.out.println("  - Database ID: " + msg.getId() + " (unique for each save)");
                         System.out.println("  - From: " + senderPhone + " (" + senderName + ")");
                         System.out.println("  - Type: " + type);
                         System.out.println("  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
                         System.out.println("  - WhatsApp Msg ID: " + messageId);
+                        System.out.println("  - Timestamp: " + new Timestamp(timestamp));
                     }
                 }
             }
