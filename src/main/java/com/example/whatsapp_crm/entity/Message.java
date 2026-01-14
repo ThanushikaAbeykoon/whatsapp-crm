@@ -12,7 +12,7 @@ public class Message {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "whatsapp_message_id", length = 255)
+    @Column(name = "whatsapp_message_id", length = 255, nullable = true)
     private String whatsappMessageId;
 
     @Column(name = "contact_phone", length = 20)

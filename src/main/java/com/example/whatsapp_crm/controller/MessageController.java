@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.example.whatsapp_crm.entity.Contact;
 import com.example.whatsapp_crm.entity.Message;
@@ -252,24 +253,58 @@ public class MessageController {
                         // Save message to database
                         // IMPORTANT: All messages are saved, including duplicates from same contact
                         // Each message gets a unique database ID, even if WhatsApp message ID is the same
-                        Message msg = new Message();
-                        msg.setContactPhone(senderPhone);
-                        msg.setBody(body);
-                        msg.setFromMe(false); // Incoming message
-                        msg.setTimestamp(new Timestamp(timestamp));
-                        msg.setCreatedAt(new Timestamp(System.currentTimeMillis()));
-                        msg.setWhatsappMessageId(messageId);
+                        try {
+                            Message msg = new Message();
+                            msg.setContactPhone(senderPhone);
+                            msg.setBody(body);
+                            msg.setFromMe(false); // Incoming message
+                            msg.setTimestamp(new Timestamp(timestamp));
+                            msg.setCreatedAt(new Timestamp(System.currentTimeMillis()));
+                            msg.setWhatsappMessageId(messageId);
 
-                        messageRepository.save(msg);
-                        messagesProcessed++;
+                            messageRepository.save(msg);
+                            messagesProcessed++;
 
-                        System.out.println("✓ Message saved to database (all messages saved, including duplicates)");
-                        System.out.println("  - Database ID: " + msg.getId() + " (unique for each save)");
-                        System.out.println("  - From: " + senderPhone + " (" + senderName + ")");
-                        System.out.println("  - Type: " + type);
-                        System.out.println("  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
-                        System.out.println("  - WhatsApp Msg ID: " + messageId);
-                        System.out.println("  - Timestamp: " + new Timestamp(timestamp));
+                            System.out.println("✓ Message saved to database (all messages saved, including duplicates)");
+                            System.out.println("  - Database ID: " + msg.getId() + " (unique for each save)");
+                            System.out.println("  - From: " + senderPhone + " (" + senderName + ")");
+                            System.out.println("  - Type: " + type);
+                            System.out.println("  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
+                            System.out.println("  - WhatsApp Msg ID: " + messageId);
+                            System.out.println("  - Timestamp: " + new Timestamp(timestamp));
+                        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                            // Handle unique constraint violation - try saving without WhatsApp message ID
+                            // This allows duplicate messages to be saved
+                            System.out.println("⚠ Constraint violation detected for WhatsApp Msg ID: " + messageId);
+                            System.out.println("  Attempting to save without WhatsApp message ID constraint...");
+                            
+                            try {
+                                Message msg = new Message();
+                                msg.setContactPhone(senderPhone);
+                                msg.setBody(body);
+                                msg.setFromMe(false);
+                                msg.setTimestamp(new Timestamp(timestamp));
+                                msg.setCreatedAt(new Timestamp(System.currentTimeMillis()));
+                                // Set WhatsApp message ID to null to allow duplicate saves
+                                msg.setWhatsappMessageId(null);
+
+                                messageRepository.save(msg);
+                                messagesProcessed++;
+
+                                System.out.println("✓ Message saved successfully (without WhatsApp message ID to allow duplicates)");
+                                System.out.println("  - Database ID: " + msg.getId());
+                                System.out.println("  - From: " + senderPhone + " (" + senderName + ")");
+                                System.out.println("  - Type: " + type);
+                                System.out.println("  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
+                                System.out.println("  - Original WhatsApp Msg ID: " + messageId + " (not stored due to constraint)");
+                            } catch (Exception e2) {
+                                System.err.println("ERROR: Failed to save message even without WhatsApp message ID: " + e2.getMessage());
+                                e2.printStackTrace();
+                            }
+                        } catch (Exception e) {
+                            System.err.println("ERROR saving message: " + e.getMessage());
+                            e.printStackTrace();
+                        }
                     }
                 }
             }
