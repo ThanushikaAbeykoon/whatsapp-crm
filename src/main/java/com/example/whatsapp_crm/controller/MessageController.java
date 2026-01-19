@@ -35,18 +35,26 @@ import com.example.whatsapp_crm.service.MessageService;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = {"https://whatsapp-crm-frontend-production.up.railway.app", "http://localhost:3000"})
+@CrossOrigin(origins = { "https://whatsapp-crm-frontend-production.up.railway.app", "http://localhost:3000" })
 public class MessageController {
 
-    @Autowired private MessageRepository messageRepository;
-    @Autowired private ContactRepository contactRepository;
-    @Autowired private RestTemplate restTemplate;
-    @Autowired private MessageService messageService;
+    @Autowired
+    private MessageRepository messageRepository;
+    @Autowired
+    private ContactRepository contactRepository;
+    @Autowired
+    private RestTemplate restTemplate;
+    @Autowired
+    private MessageService messageService;
 
-    @Value("${whatsapp.phone-number-id}") private String PHONE_NUMBER_ID;
-    @Value("${whatsapp.access-token}") private String ACCESS_TOKEN;
-    @Value("${whatsapp.version}") private String API_VERSION;
-    @Value("${whatsapp.webhook-verify-token:Testtoken12345}") private String WEBHOOK_VERIFY_TOKEN;
+    @Value("${whatsapp.phone-number-id}")
+    private String PHONE_NUMBER_ID;
+    @Value("${whatsapp.access-token}")
+    private String ACCESS_TOKEN;
+    @Value("${whatsapp.version}")
+    private String API_VERSION;
+    @Value("${whatsapp.webhook-verify-token:Testtoken12345}")
+    private String WEBHOOK_VERIFY_TOKEN;
 
     // Root endpoint - Health check and API info
     @GetMapping("/")
@@ -60,9 +68,7 @@ public class MessageController {
                         "contacts", "/api/contacts",
                         "send", "/api/send",
                         "webhook", "/api/webhook",
-                        "health", "/api/health"
-                )
-        ));
+                        "health", "/api/health")));
     }
 
     // Health check endpoint
@@ -77,14 +83,12 @@ public class MessageController {
                     "database", "connected",
                     "messageCount", messageCount,
                     "contactCount", contactCount,
-                    "timestamp", System.currentTimeMillis()
-            ));
+                    "timestamp", System.currentTimeMillis()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
                     "status", "unhealthy",
                     "error", e.getMessage(),
-                    "timestamp", System.currentTimeMillis()
-            ));
+                    "timestamp", System.currentTimeMillis()));
         }
     }
 
@@ -107,8 +111,7 @@ public class MessageController {
                     "totalElements", messages.getTotalElements(),
                     "totalPages", messages.getTotalPages(),
                     "currentPage", messages.getNumber(),
-                    "pageSize", messages.getSize()
-            ));
+                    "pageSize", messages.getSize()));
         } else {
             List<Message> messages = messageService.getAllMessages();
             return ResponseEntity.ok(messages);
@@ -187,6 +190,16 @@ public class MessageController {
                         continue;
                     }
 
+                    // Extract metadata to see which number received the message
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> metadata = (Map<String, Object>) value.get("metadata");
+                    if (metadata != null) {
+                        String displayPhoneNumber = (String) metadata.get("display_phone_number");
+                        String phoneNumberId = (String) metadata.get("phone_number_id");
+                        System.out.println("Processing event for Business Phone: " + displayPhoneNumber + " (ID: "
+                                + phoneNumberId + ")");
+                    }
+
                     // Extract contacts
                     @SuppressWarnings("unchecked")
                     List<Map<String, Object>> contacts = (List<Map<String, Object>>) value.get("contacts");
@@ -219,7 +232,8 @@ public class MessageController {
                     }
 
                     // Process each message
-                    // NOTE: All messages are saved, even if they are duplicates from the same contact
+                    // NOTE: All messages are saved, even if they are duplicates from the same
+                    // contact
                     // This ensures complete message history is preserved
                     for (Map<String, Object> message : messages) {
                         String messageId = (String) message.get("id");
@@ -232,7 +246,8 @@ public class MessageController {
                         String body = extractMessageBody(message, type);
 
                         String timestampStr = (String) message.get("timestamp");
-                        long timestamp = timestampStr != null ? Long.parseLong(timestampStr) * 1000 : System.currentTimeMillis();
+                        long timestamp = timestampStr != null ? Long.parseLong(timestampStr) * 1000
+                                : System.currentTimeMillis();
 
                         // Find or create contact
                         Contact dbContact = contactRepository.findByPhone(senderPhone);
@@ -252,7 +267,8 @@ public class MessageController {
 
                         // Save message to database
                         // IMPORTANT: All messages are saved, including duplicates from same contact
-                        // Each message gets a unique database ID, even if WhatsApp message ID is the same
+                        // Each message gets a unique database ID, even if WhatsApp message ID is the
+                        // same
                         try {
                             Message msg = new Message();
                             msg.setContactPhone(senderPhone);
@@ -265,11 +281,13 @@ public class MessageController {
                             messageRepository.save(msg);
                             messagesProcessed++;
 
-                            System.out.println("✓ Message saved to database (all messages saved, including duplicates)");
+                            System.out
+                                    .println("✓ Message saved to database (all messages saved, including duplicates)");
                             System.out.println("  - Database ID: " + msg.getId() + " (unique for each save)");
                             System.out.println("  - From: " + senderPhone + " (" + senderName + ")");
                             System.out.println("  - Type: " + type);
-                            System.out.println("  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
+                            System.out.println(
+                                    "  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
                             System.out.println("  - WhatsApp Msg ID: " + messageId);
                             System.out.println("  - Timestamp: " + new Timestamp(timestamp));
                         } catch (org.springframework.dao.DataIntegrityViolationException e) {
@@ -277,7 +295,7 @@ public class MessageController {
                             // This allows duplicate messages to be saved
                             System.out.println("⚠ Constraint violation detected for WhatsApp Msg ID: " + messageId);
                             System.out.println("  Attempting to save without WhatsApp message ID constraint...");
-                            
+
                             try {
                                 Message msg = new Message();
                                 msg.setContactPhone(senderPhone);
@@ -291,14 +309,18 @@ public class MessageController {
                                 messageRepository.save(msg);
                                 messagesProcessed++;
 
-                                System.out.println("✓ Message saved successfully (without WhatsApp message ID to allow duplicates)");
+                                System.out.println(
+                                        "✓ Message saved successfully (without WhatsApp message ID to allow duplicates)");
                                 System.out.println("  - Database ID: " + msg.getId());
                                 System.out.println("  - From: " + senderPhone + " (" + senderName + ")");
                                 System.out.println("  - Type: " + type);
-                                System.out.println("  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
-                                System.out.println("  - Original WhatsApp Msg ID: " + messageId + " (not stored due to constraint)");
+                                System.out.println(
+                                        "  - Body: " + (body.length() > 100 ? body.substring(0, 100) + "..." : body));
+                                System.out.println("  - Original WhatsApp Msg ID: " + messageId
+                                        + " (not stored due to constraint)");
                             } catch (Exception e2) {
-                                System.err.println("ERROR: Failed to save message even without WhatsApp message ID: " + e2.getMessage());
+                                System.err.println("ERROR: Failed to save message even without WhatsApp message ID: "
+                                        + e2.getMessage());
                                 e2.printStackTrace();
                             }
                         } catch (Exception e) {
@@ -397,7 +419,7 @@ public class MessageController {
     public ResponseEntity<String> sendMessage(@RequestBody SendMessageRequest request) {
         try {
             String cleanPhone = request.phone().replaceAll("[^0-9]", "");
-            
+
             System.out.println("=== Sending Message ===");
             System.out.println("To: " + cleanPhone);
             System.out.println("Message: " + request.message());
@@ -426,7 +448,7 @@ public class MessageController {
             msg.setCreatedAt(new Timestamp(now));
             // WhatsApp message ID will be null for outgoing messages until we get response
             msg.setWhatsappMessageId(null);
-            
+
             messageRepository.save(msg);
             System.out.println("✓ Message saved to database");
             System.out.println("  - Database ID: " + msg.getId());
@@ -473,7 +495,7 @@ public class MessageController {
                 } catch (Exception e) {
                     System.out.println("⚠ Could not extract WhatsApp message ID from response");
                 }
-                
+
                 System.out.println("=== Message Sent Successfully ===\n");
                 return ResponseEntity.ok("Message sent successfully to WhatsApp");
             } else {
@@ -490,5 +512,6 @@ public class MessageController {
         }
     }
 
-    record SendMessageRequest(String phone, String message) {}
+    record SendMessageRequest(String phone, String message) {
+    }
 }
